@@ -1,0 +1,3 @@
+[submodule "android_native_surface/glium"]
+	path = android_native_surface/glium
+	url = https://github.com/lattice0/glium
