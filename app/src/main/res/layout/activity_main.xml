@@ -14,7 +14,7 @@
 
     <TextureView
         android:id="@+id/rust_texture_view"
-        android:layout_width="match_parent"
+        android:layout_width="300dp"
         android:layout_height="300dp" />
 
 </LinearLayout>

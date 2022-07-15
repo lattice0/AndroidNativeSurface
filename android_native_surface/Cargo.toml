@@ -5,10 +5,10 @@ authors = ["Marijn Suijten <marijns95@gmail.com>"]
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "lib"]
 
 [features]
-android=["ndk", "libc"]
+android=["ndk"]
 
 [dependencies]
 android_logger = "0.11"
@@ -17,7 +17,7 @@ glium = "*"
 jni = "0.19"
 log = "0.4"
 ndk = { git = "https://github.com/rust-windowing/android-ndk-rs", features = ["api-level-28"], optional=true }
-libc = {version="0.2", optional=true}
+libc = {version="0.2"}
 
 [build-dependencies]
 gl_generator = "0.14"
