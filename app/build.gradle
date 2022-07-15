@@ -41,6 +41,9 @@ cargo {
     module = "../android_native_surface"
     libname = "android_native_surface"
     targets = ["arm64"]
+    features {
+        defaultAnd("android")
+    }
 }
 
 tasks.whenTaskAdded { task ->

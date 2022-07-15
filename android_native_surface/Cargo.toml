@@ -7,14 +7,17 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+android=["ndk", "libc"]
+
 [dependencies]
 android_logger = "0.11"
 glutin = "0.28"
 glium = "*"
 jni = "0.19"
 log = "0.4"
-ndk = { git = "https://github.com/rust-windowing/android-ndk-rs", features = ["api-level-28"] }
-libc = "0.2"
+ndk = { git = "https://github.com/rust-windowing/android-ndk-rs", features = ["api-level-28"], optional=true }
+libc = {version="0.2", optional=true}
 
 [build-dependencies]
 gl_generator = "0.14"
