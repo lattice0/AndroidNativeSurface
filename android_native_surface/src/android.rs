@@ -51,5 +51,6 @@ pub extern "system" fn Java_rust_androidnativesurface_MainActivity_00024Companio
         &context,
     );
     gl_context.draw();
+    context.swap_buffers().unwrap();
     //render_to_native_window(native_window)
 }
