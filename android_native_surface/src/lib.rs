@@ -1,22 +1,32 @@
-use glium::backend::glutin::android_surface_texture::SurfaceBacked;
-use glium::{implement_vertex, IndexBuffer, program, Surface, uniform, VertexBuffer};
-use glium::index::PrimitiveType;
-use glutin::ContextBuilder;
-use glutin::dpi::PhysicalSize;
-use glutin::event_loop::EventLoop;
+use android_logger::{Config, FilterBuilder};
+use glium::{implement_vertex, index::PrimitiveType, program, uniform, Surface, Texture2d};
 use jni::{
-    objects::{JClass, JObject},
-    JNIEnv,
+    objects::JClass,
+    sys::{jint, jlong, jobject, JNI_VERSION_1_6},
+    JNIEnv, JavaVM,
 };
-use log::{debug, Level};
-use ndk::{surface_texture::SurfaceTexture};
+use log::{debug, info, Level};
+use ndk::{native_window::NativeWindow, surface_texture::SurfaceTexture};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+use jni::objects::JObject;
 
 #[no_mangle]
-pub extern "system" fn Java_rust_androidnativesurface_MainActivity_00024Companion_init(
-    _env: JNIEnv,
-    _class: JClass,
-) {
-    android_logger::init_once(android_logger::Config::default().with_min_level(Level::Trace));
+pub extern "system" fn JNI_OnLoad(_java_vm: JavaVM, _reserved: *const libc::c_void) -> jint {
+    android_logger::init_once(
+        Config::default()
+            .with_min_level(Level::Trace) // limit log level
+            .with_tag("glium@android") // logs will show under mytag tag
+            .with_filter(
+                FilterBuilder::new()
+                    .parse("debug,hello::crate=error")
+                    .build(),
+            ),
+    );
+    info!("started android logging");
+    JNI_VERSION_1_6
 }
 
 #[no_mangle]
@@ -26,175 +36,145 @@ pub extern "system" fn Java_rust_androidnativesurface_MainActivity_00024Companio
     surface_texture: JObject,
 ) {
     debug!("Java SurfaceTexture: {:?}", surface_texture);
-
     let surface_texture = unsafe {
-        SurfaceTexture::from_surface_texture(
-            env.get_native_interface(),
-            surface_texture.into_inner(),
-        )
-        .unwrap()
+        SurfaceTexture::from_surface_texture(env.get_native_interface(), surface_texture.into_inner()).unwrap()
     };
-
-    render_to_native_window(surface_texture)
+    let native_window = surface_texture.acquire_native_window().unwrap();
+    render_to_native_window(native_window)
 }
 
-fn render_to_native_window(surface_texture: SurfaceTexture) {
-    debug!("{:?}", surface_texture);
-    let size = PhysicalSize::new(1280,720);
-    debug!("44");
-    let el = EventLoop::<()>::with_user_event();
-    debug!("46");
-    let context = ContextBuilder::new().build_headless(&el,size).unwrap();
-    let texture_id = 0;
-    debug!("49");
-    let display = SurfaceBacked::new(context, surface_texture, texture_id).unwrap();
-    debug!("51");
-    // building the vertex buffer, which contains all the vertices that we will draw
-    let vertex_buffer = {
-        #[derive(Copy, Clone)]
-        struct Vertex {
-            position: [f32; 2],
-            color: [f32; 3],
-        }
+#[derive(Copy, Clone)]
+struct Vertex {
+    position: [f32; 2],
+    tex_coords: [f32; 2],
+}
 
-        implement_vertex!(Vertex, position, color);
+implement_vertex!(Vertex, position, tex_coords);
 
-        VertexBuffer::new(
-            &display,
-            &[
-                Vertex {
-                    position: [-0.5, -0.5],
-                    color: [0.0, 1.0, 0.0],
-                },
-                Vertex {
-                    position: [0.0, 0.5],
-                    color: [0.0, 0.0, 1.0],
-                },
-                Vertex {
-                    position: [0.5, -0.5],
-                    color: [1.0, 0.0, 0.0],
-                },
-            ],
-        )
-        .unwrap()
-    };
-    debug!("81");
+fn render_to_native_window(native_window: NativeWindow) {
+    std::thread::spawn(move || {
+        let width = 1000;
+        let height = 1000;
+        let context = glium::glutin::ContextBuilder::new()
+            .build_windowed(native_window, (width, height))
+            .unwrap();
+        let display = glium::Display::from_gl_window(context).unwrap();
 
-    // building the index buffer
-    let index_buffer =
-        IndexBuffer::new(&display, PrimitiveType::TrianglesList, &[0u16, 1, 2]).unwrap();
-    debug!("86");
-
-    // compiling shaders and linking them together
-    let program = program!(&display,
-        140 => {
-            vertex: "
-                #version 140
-                uniform mat4 matrix;
-                in vec2 position;
-                in vec3 color;
-                out vec3 vColor;
-                void main() {
-                    gl_Position = vec4(position, 0.0, 1.0) * matrix;
-                    vColor = color;
-                }
-            ",
-
-            fragment: "
-                #version 140
-                in vec3 vColor;
-                out vec4 f_color;
-                void main() {
-                    f_color = vec4(vColor, 1.0);
-                }
-            "
-        },
-
-        110 => {
-            vertex: "
-                #version 110
-                uniform mat4 matrix;
-                attribute vec2 position;
-                attribute vec3 color;
-                varying vec3 vColor;
-                void main() {
-                    gl_Position = vec4(position, 0.0, 1.0) * matrix;
-                    vColor = color;
-                }
-            ",
-
-            fragment: "
-                #version 110
-                varying vec3 vColor;
-                void main() {
-                    gl_FragColor = vec4(vColor, 1.0);
-                }
-            ",
-        },
-
-        100 => {
-            vertex: "
-                #version 100
-                uniform lowp mat4 matrix;
-                attribute lowp vec2 position;
-                attribute lowp vec3 color;
-                varying lowp vec3 vColor;
-                void main() {
-                    gl_Position = vec4(position, 0.0, 1.0) * matrix;
-                    vColor = color;
-                }
-            ",
-
-            fragment: "
-                #version 100
-                varying lowp vec3 vColor;
-                void main() {
-                    gl_FragColor = vec4(vColor, 1.0);
-                }
-            ",
-        },
-    )
-    .unwrap();
-    debug!("158");
-
-    // Here we draw the black background and triangle to the screen using the previously
-    // initialized resources.
-    //
-    // In this case we use a closure for simplicity, however keep in mind that most serious
-    // applications should probably use a function that takes the resources as an argument.
-    let draw = move || {
-        // building the uniforms
-        let uniforms = uniform! {
-            matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0f32]
-            ]
+        let vertex_buffer_1 = {
+            glium::VertexBuffer::new(
+                &display,
+                &[
+                    Vertex {
+                        position: [-1.0, -1.0],
+                        tex_coords: [0.0, 0.0],
+                    },
+                    Vertex {
+                        position: [-1.0, 1.0],
+                        tex_coords: [0.0, 1.0],
+                    },
+                    Vertex {
+                        position: [1.0, 1.0],
+                        tex_coords: [1.0, 1.0],
+                    },
+                    Vertex {
+                        position: [1.0, -1.0],
+                        tex_coords: [1.0, 0.0],
+                    },
+                ],
+            )
+                .unwrap()
         };
 
-        // drawing a frame
-        let mut target = display.draw();
-        target.clear_color(0.0, 0.0, 0.0, 0.0);
-        debug!("179");
-        let e = target
-            .draw(
-                &vertex_buffer,
+        let index_buffer =
+            glium::IndexBuffer::new(&display, PrimitiveType::TriangleStrip, &[1 as u16, 2, 0, 3])
+                .unwrap();
+
+        info!("compiling program");
+        let program = program!(&display,
+
+            300 es => {
+                vertex: "#version 300 es
+
+                in vec2 position;
+                in vec2 tex_coords;
+
+                out vec2 v_tex_coords;
+
+                void main() {
+                    v_tex_coords = tex_coords;
+                    gl_Position = vec4(position, 0.0, 1.0);
+                }",
+
+                fragment: "#version 300 es
+                #ifdef GL_ES
+                // Set default precision to medium
+                precision mediump int;
+                precision mediump float;
+                #endif
+                uniform sampler2D tex;
+
+                in vec2 v_tex_coords;
+                out vec4 FragColor;
+
+                void main() {
+                    vec4 a = texture(tex, v_tex_coords);
+                    FragColor = vec4(a.r,0.0,0.0,1.0);
+                    //Uncomment to see that at least rendering the red square works
+                    //FragColor = vec4(1.0,0.0,0.0,1.0);
+                }",
+            },
+        );
+        let r = program;
+        info!("program result: {:?}", r);
+        let program = r.unwrap();
+
+        let mipmap = glium::texture::MipmapsOption::NoMipmap;
+        let format = glium::texture::UncompressedFloatFormat::U8;
+        let width = 1000;
+        let height = 1000;
+
+        let draw = || {
+            let mut target = display.draw();
+            target.clear_color(0.0, 0.0, 0.0, 0.0);
+            let texture =
+                Texture2d::empty_with_format(&display, format, mipmap, width, height).unwrap();
+            let mut data: Vec<Vec<u8>> = Vec::new();
+            for i in 0..width {
+                let mut v: Vec<u8> = Vec::new();
+                for j in 0..height {
+                    v.push((i * j % 255) as u8);
+                }
+                data.push(v);
+            }
+
+            texture.write(
+                glium::Rect {
+                    left: 0,
+                    bottom: 0,
+                    width,
+                    height,
+                },
+                data,
+            );
+            let uniforms = uniform! {
+                tex: texture
+            };
+            let r = target.draw(
+                &vertex_buffer_1,
                 &index_buffer,
                 &program,
                 &uniforms,
                 &Default::default(),
             );
-        if let Err(e) = e {
-            debug!("draw error: {:?}", e);
-        }
-        debug!("189");
-        target.finish().unwrap();
-    };
-    debug!("192");
+            info!("draw error? {:?}", r);
+            let r = target.finish();
+            info!("target finish error? {:?}", r);
+        };
 
-    // Draw the triangle to the screen.
-    draw();
-    debug!("196");
+        loop {
+            draw();
+            std::thread::sleep(std::time::Duration::from_secs(2));
+        }
+    });
 }
 
